@@ -2,105 +2,176 @@ import streamlit as st
 import sqlite3
 import pandas as pd
 from datetime import datetime
+from io import BytesIO
+from openpyxl import load_workbook
 
 # --- CONFIGURACIÓN DE LA PÁGINA ---
-st.set_page_config(page_title="DiplomaticDrive", page_icon="🚗", layout="wide")
+st.set_page_config(page_title="DiplomaticDrive", page_icon="🇨🇷", layout="wide")
 
 # --- CONEXIÓN A BASE DE DATOS ---
 def get_connection():
     return sqlite3.connect('mision.db')
 
-# --- TÍTULO Y BARRA LATERAL ---
-st.title("🚗 DiplomaticDrive - Panel de Control")
-st.sidebar.header("Menú Principal")
-opcion = st.sidebar.radio("Ir a:", ["Inicio", "Agenda", "Bitácora (Conductor)", "Reportes"])
+# --- MENÚ LATERAL ---
+st.title("🇨🇷 DiplomaticDrive")
+st.sidebar.header("Menú Oficial")
+opcion = st.sidebar.radio("Ir a:", ["Inicio", "Agenda", "Bitácora Oficial", "Reportes Cancillería"])
 
-# --- PÁGINA: INICIO ---
+# --- 1. SECCIÓN INICIO ---
 if opcion == "Inicio":
-    st.markdown("### 👋 Bienvenido, Luis")
-    st.info("Sistema de gestión logística de la Misión Permanente activado.")
+    st.markdown("### 👋 Panel de Control - Misión Permanente")
     
-    # Métricas rápidas (KPIs)
     conn = get_connection()
-    total_viajes = conn.execute("SELECT COUNT(*) FROM bitacora").fetchone()[0]
-    total_eventos = conn.execute("SELECT COUNT(*) FROM agenda").fetchone()[0]
+    try:
+        total_viajes = conn.execute("SELECT COUNT(*) FROM bitacora").fetchone()[0]
+    except:
+        total_viajes = 0
     conn.close()
     
-    col1, col2 = st.columns(2)
-    col1.metric("Viajes Registrados", total_viajes)
-    col2.metric("Eventos en Agenda", total_eventos)
+    st.info("Sistema listo para el registro oficial de la flota diplomática.")
+    st.metric("Viajes Registrados este mes", total_viajes)
 
-# --- PÁGINA: AGENDA ---
+# --- 2. SECCIÓN AGENDA ---
 elif opcion == "Agenda":
     st.header("📅 Agenda Oficial")
-    
-    # Mostrar tabla de eventos
     conn = get_connection()
-    df_agenda = pd.read_sql_query("SELECT titulo, fecha_hora, ubicacion, estado FROM agenda", conn)
-    conn.close()
-    
-    if not df_agenda.empty:
+    try:
+        df_agenda = pd.read_sql_query("SELECT titulo, fecha_hora, ubicacion FROM agenda", conn)
         st.dataframe(df_agenda, use_container_width=True)
-    else:
-        st.warning("No hay eventos programados.")
+    except:
+        st.warning("No hay datos de agenda aún.")
+    conn.close()
 
-# --- PÁGINA: BITÁCORA (CONDUCTOR) ---
-elif opcion == "Bitácora (Conductor)":
-    st.header("⛽ Registro de Kilometraje")
-    st.markdown("Ingresa los datos al finalizar cada traslado.")
+# --- 3. SECCIÓN BITÁCORA OFICIAL ---
+elif opcion == "Bitácora Oficial":
+    st.header("⛽ Registro de Movimiento (Formulario 074-CB-DGSE)")
+    st.markdown("Complete los datos exactos conforme al reglamento.")
     
-    with st.form("form_viaje"):
-        col1, col2 = st.columns(2)
-        odo_ini = col1.number_input("Odómetro Inicial", min_value=0, step=1)
-        odo_fin = col2.number_input("Odómetro Final", min_value=0, step=1)
-        asunto = st.text_input("Asunto / Motivo del viaje")
+    with st.form("form_oficial"):
+        # Fecha del movimiento
+        col_fecha, col_vacio = st.columns([1, 2])
+        fecha = col_fecha.date_input("Fecha del viaje", value=datetime.now())
         
-        submitted = st.form_submit_button("💾 Registrar Viaje")
+        st.markdown("---")
+        
+        # BLOQUE 1: SALIDA
+        st.subheader("🚩 SALIDA")
+        c1, c2, c3 = st.columns(3)
+        hora_sal = c1.time_input("Hora Salida", key="h_sal")
+        lugar_sal = c2.text_input("Lugar Salida", value="Misión/Residencia")
+        odo_ini = c3.number_input("Odómetro Inicial", min_value=0, step=1)
+        
+        # BLOQUE 2: DESTINO
+        st.subheader("🏁 DESTINO (LLEGADA)")
+        c4, c5, c6 = st.columns(3)
+        hora_lle = c4.time_input("Hora Llegada", key="h_lle")
+        lugar_lle = c5.text_input("Lugar Llegada")
+        odo_fin = c6.number_input("Odómetro Final", min_value=0, step=1)
+        
+        st.markdown("---")
+        
+        # BLOQUE 3: DETALLES
+        c7, c8 = st.columns([3, 1])
+        asunto = c7.text_input("Motivo / Justificación (Oficial)")
+        costo = c8.number_input("Costo ($)", min_value=0.0, step=1.0, help="Peajes, parqueo, etc.")
+        
+        # BOTÓN DE GUARDADO
+        submitted = st.form_submit_button("💾 REGISTRAR MOVIMIENTO OFICIAL")
         
         if submitted:
+            # Validaciones
             if odo_fin < odo_ini:
-                st.error("Error: El odómetro final no puede ser menor al inicial.")
+                st.error("❌ ERROR: El kilometraje final no puede ser menor al inicial.")
+            elif not asunto:
+                st.error("❌ ERROR: Debe indicar el motivo del viaje.")
             else:
                 conn = get_connection()
                 cur = conn.cursor()
-                cur.execute("INSERT INTO bitacora (odo_inicial, odo_final, asunto) VALUES (?, ?, ?)", 
-                            (odo_ini, odo_fin, asunto))
+                cur.execute('''
+                    INSERT INTO bitacora (fecha, hora_salida, lugar_salida, odo_inicial, 
+                                          hora_llegada, lugar_llegada, odo_final, costo, asunto)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (fecha, str(hora_sal), lugar_sal, odo_ini, str(hora_lle), lugar_lle, odo_fin, costo, asunto))
                 conn.commit()
                 conn.close()
-                st.success(f"¡Viaje registrado! Distancia: {odo_fin - odo_ini} km")
+                
+                distancia = odo_fin - odo_ini
+                st.success(f"✅ REGISTRO EXITOSO: Se recorrieron {distancia} km.")
 
-# --- PÁGINA: REPORTES ---
-elif opcion == "Reportes":
-    st.header("📄 Informe Semanal Automatizado")
+# --- 4. SECCIÓN REPORTES (PLANTILLA OFICIAL) ---
+elif opcion == "Reportes Cancillería":
+    st.header("📂 Exportación Oficial (Formato Ministerio)")
+    st.markdown("Genera el Excel idéntico al oficial sobre la plantilla.")
     
-    if st.button("Generar Informe para Embajadora"):
+    if st.button("🔄 Generar Reporte Excel Oficial"):
         conn = get_connection()
-        
-        # Datos Agenda
-        eventos = conn.execute("SELECT titulo, fecha_hora FROM agenda").fetchall()
-        # Datos Viajes
-        viajes = conn.execute("SELECT odo_inicial, odo_final, asunto FROM bitacora").fetchall()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM bitacora")
+        datos = cursor.fetchall()
         conn.close()
         
-        # Generación del Texto
-        st.markdown("---")
-        st.subheader(f"Informe Semanal - {datetime.now().strftime('%Y-%m-%d')}")
-        
-        st.markdown("**1. Resumen de Actividades:**")
-        if eventos:
-            for ev in eventos:
-                st.write(f"- ✅ {ev[1]}: {ev[0]}")
+        if not datos:
+            st.warning("⚠️ No hay datos para exportar. Registra un viaje primero.")
         else:
-            st.write("(Sin eventos)")
-            
-        st.markdown("**2. Control de Movilidad:**")
-        total_km = 0
-        if viajes:
-            for v in viajes:
-                km = v[1] - v[0]
-                total_km += km
-                st.write(f"- 🚗 {v[2]} ({km} km)")
-        
-        st.success(f"⛽ TOTAL KILÓMETROS RECORRIDOS: {total_km} km")
-        st.markdown("---")
-        st.caption("Generado automáticamente por DiplomaticDrive System.")
+            try:
+                # Cargar la plantilla que debes tener en la carpeta
+                wb = load_workbook("plantilla_oficial.xlsx")
+                ws = wb.active 
+                
+                # --- CONFIGURACIÓN DE COLUMNAS ---
+                # Ajusta estos números según tu Excel oficial
+                FILA_INICIAL = 16 
+                
+                for i, viaje in enumerate(datos):
+                    fila = FILA_INICIAL + i
+                    # viaje = (id, fecha, h_sal, lug_sal, odo_ini, h_lle, lug_lle, odo_fin, costo, asunto)
+                    
+                    # FECHA (Columna A = 1)
+                    ws.cell(row=fila, column=1, value=viaje[1])
+                    
+                    # SALIDA: Odometro (Col B=2), Lugar (Col C=3), Hora (Col D=4)
+                    ws.cell(row=fila, column=2, value=viaje[4]) # Odo Ini
+                    ws.cell(row=fila, column=3, value=viaje[3]) # Lugar Sal
+                    ws.cell(row=fila, column=4, value=viaje[2]) # Hora Sal
+                    
+                    # --- BLOQUE LLEGADA (Corregido) ---
+                    
+                    # Columna E (5) -> Km Final (Odómetro Final)
+                    # El dato viaje[7] es el odómetro final en la base de datos
+                    ws.cell(row=fila, column=5, value=viaje[7]) 
+                    
+                    # Columna F (6) -> Lugar Llegada (Asumiendo que está en el medio, letra F)
+                    ws.cell(row=fila, column=6, value=viaje[6]) 
+                    
+                    # Columna G (7) -> Hora Llegada
+                    # El dato viaje[5] es la hora de llegada en la base de datos
+                    ws.cell(row=fila, column=7, value=viaje[5])
+                    
+                    # CALCULOS: Km Recorridos (Col H=8)
+                    km_recorridos = viaje[7] - viaje[4]
+                    ws.cell(row=fila, column=8, value=km_recorridos)
+                    
+                    # COSTO (Col J=10) - Saltamos la I (Totales)
+                    ws.cell(row=fila, column=10, value=viaje[8])
+                    
+                    # JUSTIFICACION (Col K=11)
+                    ws.cell(row=fila, column=11, value=viaje[9])
+
+                # Guardar en memoria para descargar
+                buffer = BytesIO()
+                wb.save(buffer)
+                buffer.seek(0)
+                
+                st.success("✅ Reporte generado sobre la plantilla.")
+                st.download_button(
+                    label="📥 Descargar Excel Listo (.xlsx)",
+                    data=buffer,
+                    file_name=f"Bitacora_Oficial_{datetime.now().strftime('%Y-%m-%d')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+                
+            except FileNotFoundError:
+                st.error("❌ ERROR: No encuentro el archivo 'plantilla_oficial.xlsx' en la carpeta.")
+                st.info("Asegúrate de guardar el Excel vacío con ese nombre exacto.")
+            except Exception as e:
+                st.error(f"Ocurrió un error inesperado: {e}")
