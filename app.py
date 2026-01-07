@@ -1,7 +1,7 @@
 import streamlit as st
 import sqlite3
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta  # <--- AGREGAMOS TIMEDELTA AQUÍ
 from io import BytesIO
 from openpyxl import load_workbook
 
@@ -29,7 +29,7 @@ if opcion == "Inicio":
     conn.close()
     
     st.info("Sistema listo para el registro oficial de la flota diplomática.")
-    st.metric("Viajes Registrados este mes", total_viajes)
+    st.metric("Viajes Totales Registrados", total_viajes)
 
 # --- 2. SECCIÓN AGENDA ---
 elif opcion == "Agenda":
@@ -57,14 +57,16 @@ elif opcion == "Bitácora Oficial":
         # BLOQUE 1: SALIDA
         st.subheader("🚩 SALIDA")
         c1, c2, c3 = st.columns(3)
-        hora_sal = c1.time_input("Hora Salida", key="h_sal")
+        # AQUI AGREGAMOS step=60 PARA MINUTOS EXACTOS
+        hora_sal = c1.time_input("Hora Salida", key="h_sal", step=60) 
         lugar_sal = c2.text_input("Lugar Salida", value="Misión/Residencia")
         odo_ini = c3.number_input("Odómetro Inicial", min_value=0, step=1)
         
         # BLOQUE 2: DESTINO
         st.subheader("🏁 DESTINO (LLEGADA)")
         c4, c5, c6 = st.columns(3)
-        hora_lle = c4.time_input("Hora Llegada", key="h_lle")
+        # AQUI AGREGAMOS step=60 PARA MINUTOS EXACTOS
+        hora_lle = c4.time_input("Hora Llegada", key="h_lle", step=60)
         lugar_lle = c5.text_input("Lugar Llegada")
         odo_fin = c6.number_input("Odómetro Final", min_value=0, step=1)
         
@@ -102,16 +104,35 @@ elif opcion == "Bitácora Oficial":
 elif opcion == "Reportes Cancillería":
     st.header("📂 Exportación Oficial (Formato Ministerio)")
     st.markdown("Genera el Excel idéntico al oficial sobre la plantilla.")
+
+    # --- NUEVO: FILTRO DE FECHAS ---
+    st.markdown("### 📅 Seleccione la Semana a Reportar")
+    col_f1, col_f2 = st.columns(2)
+    with col_f1:
+        # Por defecto muestra desde hace 7 días
+        f_inicio = st.date_input("Desde:", value=datetime.now() - timedelta(days=7))
+    with col_f2:
+        # Hasta hoy
+        f_fin = st.date_input("Hasta:", value=datetime.now())
+
+    st.write(f"Generando reporte desde **{f_inicio}** hasta **{f_fin}**")
+    # -------------------------------
     
     if st.button("🔄 Generar Reporte Excel Oficial"):
         conn = get_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM bitacora")
+        
+        # --- NUEVO: CONSULTA SQL CON FILTRO ---
+        # Solo traemos los viajes que estén ENTRE las fechas seleccionadas
+        query = "SELECT * FROM bitacora WHERE date(fecha) >= date(?) AND date(fecha) <= date(?)"
+        cursor.execute(query, (f_inicio, f_fin))
+        # --------------------------------------
+        
         datos = cursor.fetchall()
         conn.close()
         
         if not datos:
-            st.warning("⚠️ No hay datos para exportar. Registra un viaje primero.")
+            st.warning(f"⚠️ No hay viajes registrados entre el {f_inicio} y el {f_fin}.")
         else:
             try:
                 # Cargar la plantilla que debes tener en la carpeta
@@ -137,14 +158,12 @@ elif opcion == "Reportes Cancillería":
                     # --- BLOQUE LLEGADA (Corregido) ---
                     
                     # Columna E (5) -> Km Final (Odómetro Final)
-                    # El dato viaje[7] es el odómetro final en la base de datos
                     ws.cell(row=fila, column=5, value=viaje[7]) 
                     
                     # Columna F (6) -> Lugar Llegada (Asumiendo que está en el medio, letra F)
                     ws.cell(row=fila, column=6, value=viaje[6]) 
                     
                     # Columna G (7) -> Hora Llegada
-                    # El dato viaje[5] es la hora de llegada en la base de datos
                     ws.cell(row=fila, column=7, value=viaje[5])
                     
                     # CALCULOS: Km Recorridos (Col H=8)
@@ -162,11 +181,11 @@ elif opcion == "Reportes Cancillería":
                 wb.save(buffer)
                 buffer.seek(0)
                 
-                st.success("✅ Reporte generado sobre la plantilla.")
+                st.success(f"✅ Reporte generado: {len(datos)} viajes encontrados en ese rango.")
                 st.download_button(
                     label="📥 Descargar Excel Listo (.xlsx)",
                     data=buffer,
-                    file_name=f"Bitacora_Oficial_{datetime.now().strftime('%Y-%m-%d')}.xlsx",
+                    file_name=f"Bitacora_{f_inicio}_al_{f_fin}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 )
                 
