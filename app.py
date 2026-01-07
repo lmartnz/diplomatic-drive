@@ -15,7 +15,7 @@ def get_connection():
 # --- MENÚ LATERAL ---
 st.title("🇨🇷 DiplomaticDrive")
 st.sidebar.header("Menú Oficial")
-opcion = st.sidebar.radio("Ir a:", ["Inicio", "Agenda", "Bitácora Oficial", "Reportes Cancillería"])
+opcion = st.sidebar.radio("Ir a:", ["Inicio", "Agenda", "Bitácora Oficial", "Reportes Cancillería", "Mantenimiento"])
 
 # --- 1. SECCIÓN INICIO ---
 if opcion == "Inicio":
@@ -194,3 +194,21 @@ elif opcion == "Reportes Cancillería":
                 st.info("Asegúrate de guardar el Excel vacío con ese nombre exacto.")
             except Exception as e:
                 st.error(f"Ocurrió un error inesperado: {e}")
+                # --- 5. SECCIÓN MANTENIMIENTO (RESET) ---
+elif opcion == "Mantenimiento":
+    st.header("⚠️ Zona de Mantenimiento")
+    st.warning("Cuidado: Estas acciones afectan la base de datos permanentemente.")
+
+    st.write("Si cometiste un error y quieres empezar de cero (borrar prueba y errores), usa este botón.")
+
+    # Usamos un checkbox para evitar clics accidentales
+    if st.checkbox("Estoy seguro de que quiero borrar TODOS los viajes"):
+        if st.button("🗑️ BORRAR TODO EL HISTORIAL Y REINICIAR A CERO"):
+            conn = get_connection()
+            cursor = conn.cursor()
+            # Esta orden borra todas las filas de la tabla, pero deja la tabla lista para usarse
+            cursor.execute("DELETE FROM bitacora")
+            conn.commit()
+            conn.close()
+            st.success("✅ ¡Base de datos limpiada! Ahora tienes 0 viajes. Ve a 'Bitácora Oficial' para empezar de nuevo.")
+            st.rerun() # Esto recarga la página automáticamente
