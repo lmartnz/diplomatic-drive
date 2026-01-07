@@ -148,7 +148,13 @@ elif opcion == "Reportes Cancillería":
                     # viaje = (id, fecha, h_sal, lug_sal, odo_ini, h_lle, lug_lle, odo_fin, costo, asunto)
                     
                     # FECHA (Columna A = 1)
-                    ws.cell(row=fila, column=1, value=viaje[1])
+                    # FECHA (Columna A = 1)
+                    # Paso 1: Convertimos el texto '2026-01-05' a un objeto de fecha real
+                    fecha_obj = datetime.strptime(viaje[1], '%Y-%m-%d')
+                    # Paso 2: Le damos el formato latino 'dd/mm/aaaa'
+                    fecha_bonita = fecha_obj.strftime('%d/%m/%Y')
+                    # Paso 3: Lo escribimos en la celda
+                    ws.cell(row=fila, column=1, value=fecha_bonita)
                     
                     # SALIDA: Odometro (Col B=2), Lugar (Col C=3), Hora (Col D=4)
                     ws.cell(row=fila, column=2, value=viaje[4]) # Odo Ini
