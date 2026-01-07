@@ -56,16 +56,30 @@ elif opcion == "Bitácora Oficial":
         
         # BLOQUE 1: SALIDA
         st.subheader("🚩 SALIDA")
+        
+        # Botón auxiliar para llenar rápido (Fuera de columnas para que no desalinee)
+        if st.form_submit_button("⏱️ Poner Hora Salida: AHORA"):
+            st.session_state['h_sal'] = datetime.now().time()
+            st.rerun()
+
         c1, c2, c3 = st.columns(3)
-        # AQUI AGREGAMOS step=60 PARA MINUTOS EXACTOS
+        # IMPORTANTE: key="h_sal" permite que el botón de arriba inyecte el dato aqui
         hora_sal = c1.time_input("Hora Salida", key="h_sal", step=60) 
         lugar_sal = c2.text_input("Lugar Salida", value="Misión/Residencia")
         odo_ini = c3.number_input("Odómetro Inicial", min_value=0, step=1)
         
+        st.markdown("---")
+        
         # BLOQUE 2: DESTINO
         st.subheader("🏁 DESTINO (LLEGADA)")
+        
+        # Botón auxiliar para llenar rápido
+        if st.form_submit_button("🏁 Poner Hora Llegada: AHORA"):
+            st.session_state['h_lle'] = datetime.now().time()
+            st.rerun()
+
         c4, c5, c6 = st.columns(3)
-        # AQUI AGREGAMOS step=60 PARA MINUTOS EXACTOS
+        # IMPORTANTE: key="h_lle" permite que el botón de arriba inyecte el dato aqui
         hora_lle = c4.time_input("Hora Llegada", key="h_lle", step=60)
         lugar_lle = c5.text_input("Lugar Llegada")
         odo_fin = c6.number_input("Odómetro Final", min_value=0, step=1)
@@ -77,10 +91,9 @@ elif opcion == "Bitácora Oficial":
         asunto = c7.text_input("Motivo / Justificación (Oficial)")
         costo = c8.number_input("Costo ($)", min_value=0.0, step=1.0, help="Peajes, parqueo, etc.")
         
-        # BOTÓN DE GUARDADO
-        submitted = st.form_submit_button("💾 REGISTRAR MOVIMIENTO OFICIAL")
-        
-        if submitted:
+        # BOTÓN DE GUARDADO PRINCIPAL
+        # Nota: Al usar form_submit_button arriba, este debe ser el último
+        if st.form_submit_button("💾 REGISTRAR MOVIMIENTO OFICIAL"):
             # Validaciones
             if odo_fin < odo_ini:
                 st.error("❌ ERROR: El kilometraje final no puede ser menor al inicial.")
