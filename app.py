@@ -1,233 +1,136 @@
 import streamlit as st
-import sqlite3
 import pandas as pd
-from datetime import datetime, timedelta  # <--- AGREGAMOS TIMEDELTA AQUÍ
-from io import BytesIO
-from openpyxl import load_workbook
+from datetime import datetime
+import pytz
+from streamlit_gsheets import GSheetsConnection
 
-# --- CONFIGURACIÓN DE LA PÁGINA ---
-st.set_page_config(page_title="DiplomaticDrive", page_icon="🇨🇷", layout="wide")
+# --- CONFIGURACIÓN DE PÁGINA ---
+st.set_page_config(page_title="Diplomatic Drive", page_icon="🚗")
 
-# --- CONEXIÓN A BASE DE DATOS ---
-def get_connection():
-    return sqlite3.connect('mision.db')
+# --- CONEXIÓN A GOOGLE SHEETS ---
+conn = st.connection("gsheets", type=GSheetsConnection)
 
-# --- MENÚ LATERAL ---
-st.title("🇨🇷 DiplomaticDrive")
-st.sidebar.header("Menú Oficial")
-opcion = st.sidebar.radio("Ir a:", ["Inicio", "Agenda", "Bitácora Oficial", "Reportes Cancillería", "Mantenimiento"])
-
-# --- 1. SECCIÓN INICIO ---
-if opcion == "Inicio":
-    st.markdown("### 👋 Panel de Control - Misión Permanente")
-    
-    conn = get_connection()
+# --- FUNCIONES DE BASE DE DATOS ---
+def cargar_datos():
+    # ttl=0 asegura que no guarde caché vieja
     try:
-        total_viajes = conn.execute("SELECT COUNT(*) FROM bitacora").fetchone()[0]
+        return conn.read(worksheet="Hoja 1", ttl=0)
     except:
-        total_viajes = 0
-    conn.close()
-    
-    st.info("Sistema listo para el registro oficial de la flota diplomática.")
-    st.metric("Viajes Totales Registrados", total_viajes)
+        return pd.DataFrame()
 
-# --- 2. SECCIÓN AGENDA ---
-elif opcion == "Agenda":
-    st.header("📅 Agenda Oficial")
-    conn = get_connection()
+def guardar_viaje(datos):
     try:
-        df_agenda = pd.read_sql_query("SELECT titulo, fecha_hora, ubicacion FROM agenda", conn)
-        st.dataframe(df_agenda, use_container_width=True)
-    except:
-        st.warning("No hay datos de agenda aún.")
-    conn.close()
+        df_actual = cargar_datos()
+        # Convertimos el diccionario a DataFrame
+        nuevo_df = pd.DataFrame([datos])
+        # Unimos los datos nuevos con los viejos
+        df_actualizado = pd.concat([df_actual, nuevo_df], ignore_index=True)
+        # Enviamos a Google
+        conn.update(worksheet="Hoja 1", data=df_actualizado)
+        return True
+    except Exception as e:
+        st.error(f"Error guardando en la nube: {e}")
+        return False
 
-# --- 3. SECCIÓN BITÁCORA OFICIAL ---
-elif opcion == "Bitácora Oficial":
-    st.header("⛽ Registro de Movimiento (Formulario 074-CB-DGSE)")
-    st.markdown("Complete los datos exactos conforme al reglamento.")
+# --- FUNCIÓN PARA LA HORA EXACTA (Washington DC) ---
+def obtener_hora_actual():
+    zona_dc = pytz.timezone('America/New_York')
+    # Devolvemos solo la hora (HH:MM)
+    return datetime.now(zona_dc).strftime("%H:%M")
+
+# --- CALLBACKS PARA LOS BOTONES (Evitan que se trabe) ---
+def set_hora_salida():
+    st.session_state.hora_salida = obtener_hora_actual()
+
+def set_hora_llegada():
+    st.session_state.hora_llegada = obtener_hora_actual()
+
+# --- INTERFAZ GRÁFICA ---
+st.title("🚗 Diplomatic Drive - Oficial")
+st.markdown("*Sistema de Control de Flota - Misión OEA*")
+
+# Menú lateral para descargar (opcional, pero útil)
+with st.sidebar:
+    st.header("Opciones")
+    if st.button("🔄 Actualizar Datos"):
+        st.cache_data.clear()
+        st.rerun()
+    st.info("Conectado a Google Database Segura 🔒")
+
+# --- FORMULARIO DE REGISTRO ---
+with st.form("entry_form", clear_on_submit=False):
+    col1, col2 = st.columns(2)
     
-    with st.form("form_oficial"):
-        # Fecha del movimiento
-        col_fecha, col_vacio = st.columns([1, 2])
-        fecha = col_fecha.date_input("Fecha del viaje", value=datetime.now())
+    with col1:
+        fecha = st.date_input("Fecha del Viaje", datetime.now())
         
-        st.markdown("---")
-        
-        # BLOQUE 1: SALIDA
-        st.subheader("🚩 SALIDA")
-        
-        # Botón auxiliar para llenar rápido (Fuera de columnas para que no desalinee)
-        if st.form_submit_button("⏱️ Poner Hora Salida: AHORA"):
-            st.session_state['h_sal'] = datetime.now().time()
-            st.rerun()
+        st.write("---")
+        # Botón y Campo de Salida
+        col_btn_sal, col_input_sal = st.columns([1, 2])
+        with col_btn_sal:
+            st.form_submit_button("🕒 Hora Salida", on_click=set_hora_salida, type="secondary")
+        with col_input_sal:
+            # Si la variable no existe en memoria, la inicializamos vacía
+            if 'hora_salida' not in st.session_state:
+                st.session_state.hora_salida = ""
+            hora_sal = st.text_input("Salida (HH:MM)", key='hora_salida')
+            
+        lugar_sal = st.text_input("📍 Lugar Salida")
+        odo_ini = st.number_input("🔢 Odómetro Inicial", min_value=0)
 
-        c1, c2, c3 = st.columns(3)
-        # IMPORTANTE: key="h_sal" permite que el botón de arriba inyecte el dato aqui
-        hora_sal = c1.time_input("Hora Salida", key="h_sal", step=60) 
-        lugar_sal = c2.text_input("Lugar Salida", value="Misión/Residencia")
-        odo_ini = c3.number_input("Odómetro Inicial", min_value=0, step=1)
+    with col2:
+        st.write("") 
+        st.write("---")
         
-        st.markdown("---")
-        
-        # BLOQUE 2: DESTINO
-        st.subheader("🏁 DESTINO (LLEGADA)")
-        
-        # Botón auxiliar para llenar rápido
-        if st.form_submit_button("🏁 Poner Hora Llegada: AHORA"):
-            st.session_state['h_lle'] = datetime.now().time()
-            st.rerun()
+        # Botón y Campo de Llegada
+        col_btn_lle, col_input_lle = st.columns([1, 2])
+        with col_btn_lle:
+            st.form_submit_button("🏁 Hora Llegada", on_click=set_hora_llegada, type="secondary")
+        with col_input_lle:
+            if 'hora_llegada' not in st.session_state:
+                st.session_state.hora_llegada = ""
+            hora_lle = st.text_input("Llegada (HH:MM)", key='hora_llegada')
 
-        c4, c5, c6 = st.columns(3)
-        # IMPORTANTE: key="h_lle" permite que el botón de arriba inyecte el dato aqui
-        hora_lle = c4.time_input("Hora Llegada", key="h_lle", step=60)
-        lugar_lle = c5.text_input("Lugar Llegada")
-        odo_fin = c6.number_input("Odómetro Final", min_value=0, step=1)
-        
-        st.markdown("---")
-        
-        # BLOQUE 3: DETALLES
-        c7, c8 = st.columns([3, 1])
-        asunto = c7.text_input("Motivo / Justificación (Oficial)")
-        costo = c8.number_input("Costo ($)", min_value=0.0, step=1.0, help="Peajes, parqueo, etc.")
-        
-        # BOTÓN DE GUARDADO PRINCIPAL
-        # Nota: Al usar form_submit_button arriba, este debe ser el último
-        if st.form_submit_button("💾 REGISTRAR MOVIMIENTO OFICIAL"):
-            # Validaciones
-            if odo_fin < odo_ini:
-                st.error("❌ ERROR: El kilometraje final no puede ser menor al inicial.")
-            elif not asunto:
-                st.error("❌ ERROR: Debe indicar el motivo del viaje.")
-            else:
-                conn = get_connection()
-                cur = conn.cursor()
-                cur.execute('''
-                    INSERT INTO bitacora (fecha, hora_salida, lugar_salida, odo_inicial, 
-                                          hora_llegada, lugar_llegada, odo_final, costo, asunto)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ''', (fecha, str(hora_sal), lugar_sal, odo_ini, str(hora_lle), lugar_lle, odo_fin, costo, asunto))
-                conn.commit()
-                conn.close()
-                
-                distancia = odo_fin - odo_ini
-                st.success(f"✅ REGISTRO EXITOSO: Se recorrieron {distancia} km.")
+        lugar_lle = st.text_input("📍 Lugar Llegada")
+        odo_fin = st.number_input("🔢 Odómetro Final", min_value=0)
 
-# --- 4. SECCIÓN REPORTES (PLANTILLA OFICIAL) ---
-elif opcion == "Reportes Cancillería":
-    st.header("📂 Exportación Oficial (Formato Ministerio)")
-    st.markdown("Genera el Excel idéntico al oficial sobre la plantilla.")
+    st.write("---")
+    asunto = st.text_area("📝 Asunto / Misión (Detalle completo)")
+    costo = st.number_input("💵 Gastos (Peajes/Parking)", min_value=0.0, format="%.2f")
 
-    # --- NUEVO: FILTRO DE FECHAS ---
-    st.markdown("### 📅 Seleccione la Semana a Reportar")
-    col_f1, col_f2 = st.columns(2)
-    with col_f1:
-        # Por defecto muestra desde hace 7 días
-        f_inicio = st.date_input("Desde:", value=datetime.now() - timedelta(days=7))
-    with col_f2:
-        # Hasta hoy
-        f_fin = st.date_input("Hasta:", value=datetime.now())
-
-    st.write(f"Generando reporte desde **{f_inicio}** hasta **{f_fin}**")
-    # -------------------------------
+    # BOTÓN FINAL DE GUARDADO
+    submitted = st.form_submit_button("💾 GUARDAR VIAJE EN LA NUBE", type="primary")
     
-    if st.button("🔄 Generar Reporte Excel Oficial"):
-        conn = get_connection()
-        cursor = conn.cursor()
-        
-        # --- NUEVO: CONSULTA SQL CON FILTRO ---
-        # Solo traemos los viajes que estén ENTRE las fechas seleccionadas
-        query = "SELECT * FROM bitacora WHERE date(fecha) >= date(?) AND date(fecha) <= date(?)"
-        cursor.execute(query, (f_inicio, f_fin))
-        # --------------------------------------
-        
-        datos = cursor.fetchall()
-        conn.close()
-        
-        if not datos:
-            st.warning(f"⚠️ No hay viajes registrados entre el {f_inicio} y el {f_fin}.")
+    if submitted:
+        # Validaciones
+        if not asunto:
+            st.error("⚠️ El asunto es obligatorio.")
+        elif odo_fin < odo_ini and odo_fin != 0:
+            st.error("⚠️ Error: El odómetro final es menor al inicial.")
+        elif not hora_sal or not hora_lle:
+             st.error("⚠️ Faltan las horas de registro.")
         else:
-            try:
-                # Cargar la plantilla que debes tener en la carpeta
-                wb = load_workbook("plantilla_oficial.xlsx")
-                ws = wb.active 
-                
-                # --- CONFIGURACIÓN DE COLUMNAS ---
-                # Ajusta estos números según tu Excel oficial
-                FILA_INICIAL = 16 
-                
-                for i, viaje in enumerate(datos):
-                    fila = FILA_INICIAL + i
-                    # viaje = (id, fecha, h_sal, lug_sal, odo_ini, h_lle, lug_lle, odo_fin, costo, asunto)
-                    
-                    # FECHA (Columna A = 1)
-                    # FECHA (Columna A = 1)
-                    # Paso 1: Convertimos el texto '2026-01-05' a un objeto de fecha real
-                    fecha_obj = datetime.strptime(viaje[1], '%Y-%m-%d')
-                    # Paso 2: Le damos el formato latino 'dd/mm/aaaa'
-                    fecha_bonita = fecha_obj.strftime('%d/%m/%Y')
-                    # Paso 3: Lo escribimos en la celda
-                    ws.cell(row=fila, column=1, value=fecha_bonita)
-                    
-                    # SALIDA: Odometro (Col B=2), Lugar (Col C=3), Hora (Col D=4)
-                    ws.cell(row=fila, column=2, value=viaje[4]) # Odo Ini
-                    ws.cell(row=fila, column=3, value=viaje[3]) # Lugar Sal
-                    ws.cell(row=fila, column=4, value=viaje[2]) # Hora Sal
-                    
-                    # --- BLOQUE LLEGADA (Corregido) ---
-                    
-                    # Columna E (5) -> Km Final (Odómetro Final)
-                    ws.cell(row=fila, column=5, value=viaje[7]) 
-                    
-                    # Columna F (6) -> Lugar Llegada (Asumiendo que está en el medio, letra F)
-                    ws.cell(row=fila, column=6, value=viaje[6]) 
-                    
-                    # Columna G (7) -> Hora Llegada
-                    ws.cell(row=fila, column=7, value=viaje[5])
-                    
-                    # CALCULOS: Km Recorridos (Col H=8)
-                    km_recorridos = viaje[7] - viaje[4]
-                    ws.cell(row=fila, column=8, value=km_recorridos)
-                    
-                    # COSTO (Col J=10) - Saltamos la I (Totales)
-                    ws.cell(row=fila, column=10, value=viaje[8])
-                    
-                    # JUSTIFICACION (Col K=11)
-                    ws.cell(row=fila, column=11, value=viaje[9])
-
-                # Guardar en memoria para descargar
-                buffer = BytesIO()
-                wb.save(buffer)
-                buffer.seek(0)
-                
-                st.success(f"✅ Reporte generado: {len(datos)} viajes encontrados en ese rango.")
-                st.download_button(
-                    label="📥 Descargar Excel Listo (.xlsx)",
-                    data=buffer,
-                    file_name=f"Bitacora_{f_inicio}_al_{f_fin}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
-                
-            except FileNotFoundError:
-                st.error("❌ ERROR: No encuentro el archivo 'plantilla_oficial.xlsx' en la carpeta.")
-                st.info("Asegúrate de guardar el Excel vacío con ese nombre exacto.")
-            except Exception as e:
-                st.error(f"Ocurrió un error inesperado: {e}")
-                # --- 5. SECCIÓN MANTENIMIENTO (RESET) ---
-elif opcion == "Mantenimiento":
-    st.header("⚠️ Zona de Mantenimiento")
-    st.warning("Cuidado: Estas acciones afectan la base de datos permanentemente.")
-
-    st.write("Si cometiste un error y quieres empezar de cero (borrar prueba y errores), usa este botón.")
-
-    # Usamos un checkbox para evitar clics accidentales
-    if st.checkbox("Estoy seguro de que quiero borrar TODOS los viajes"):
-        if st.button("🗑️ BORRAR TODO EL HISTORIAL Y REINICIAR A CERO"):
-            conn = get_connection()
-            cursor = conn.cursor()
-            # Esta orden borra todas las filas de la tabla, pero deja la tabla lista para usarse
-            cursor.execute("DELETE FROM bitacora")
-            conn.commit()
-            conn.close()
-            st.success("✅ ¡Base de datos limpiada! Ahora tienes 0 viajes. Ve a 'Bitácora Oficial' para empezar de nuevo.")
-            st.rerun() # Esto recarga la página automáticamente
+            # Empaquetamos los datos
+            nuevo_registro = {
+                "fecha": str(fecha),
+                "hora_salida": str(hora_sal),
+                "lugar_salida": lugar_sal,
+                "odo_inicial": int(odo_ini),
+                "hora_llegada": str(hora_lle),
+                "lugar_llegada": lugar_lle,
+                "odo_final": int(odo_fin),
+                "costo": float(costo),
+                "asunto": asunto,
+                "timestamp_registro": str(datetime.now())
+            }
+            
+            # Guardamos
+            with st.spinner("Guardando en base de datos blindada..."):
+                exito = guardar_viaje(nuevo_registro)
+            
+            if exito:
+                st.success("✅ ¡Viaje registrado exitosamente!")
+                # Opcional: Limpiar campos manuales si quisieras
+                st.balloons()
+            else:
+                st.error("❌ Error de conexión con Google Sheets. Revisa los Secrets.")
