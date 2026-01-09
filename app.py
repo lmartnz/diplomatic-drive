@@ -45,7 +45,7 @@ def set_hora_llegada():
 # ==========================================
 
 with st.sidebar:
-    st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/b/bc/Coat_of_arms_of_Costa_Rica.svg/1200px-Coat_of_arms_of_Costa_Rica.svg.png", width=100)
+    st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/f/f2/Flag_of_Costa_Rica.svg/320px-Flag_of_Costa_Rica.svg.png", width=100)
     st.title("Diplomatic Drive")
     st.subheader("Misión Permanente OEA")
     
@@ -165,3 +165,4 @@ elif menu == "📄 Reportes Cancillería":
 elif menu == "⚙️ Mantenimiento":
     st.title("Control de Mantenimiento")
     st.write("🚧 Próximamente: Alertas de cambio de aceite y llantas.")
+
