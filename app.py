@@ -82,10 +82,24 @@ elif menu == "📅 Agenda":
     st.title("Agenda de la Embajadora")
     st.write("🚧 Integración con Outlook en construcción (Fase 2)...")
 
-# 3. PÁGINA DE BITÁCORA (AQUÍ ESTÁ LA MAGIA NUEVA)
+# 3. PÁGINA DE BITÁCORA (CON MEMORIA INTELIGENTE 🧠)
 elif menu == "🚗 Bitácora Oficial":
     st.title("📒 Registro de Movimientos Oficiales")
     st.markdown("*Formulario conectado a Google Sheets*")
+    
+    # --- LOGICA DE MEMORIA INTELIGENTE ---
+    # 1. Leemos los datos ANTES de pintar el formulario
+    df = cargar_datos()
+    
+    # 2. Definimos valores por defecto (si es el primer viaje de la historia, son ceros)
+    def_lugar_salida = ""
+    def_odo_inicial = 0
+    
+    # 3. Si hay datos previos, tomamos el ÚLTIMO viaje registrado
+    if not df.empty:
+        ultimo_viaje = df.iloc[-1] # La última fila
+        def_lugar_salida = ultimo_viaje["lugar_llegada"] # El destino anterior es el inicio actual
+        def_odo_inicial = int(ultimo_viaje["odo_final"]) # El odómetro final anterior es el inicial actual
     
     with st.form("entry_form", clear_on_submit=False):
         col1, col2 = st.columns(2)
@@ -101,9 +115,11 @@ elif menu == "🚗 Bitácora Oficial":
             with col_i1:
                 if 'hora_salida' not in st.session_state: st.session_state.hora_salida = ""
                 hora_sal = st.text_input("Hora Salida", key='hora_salida')
-                
-            lugar_sal = st.text_input("📍 Lugar Salida")
-            odo_ini = st.number_input("🔢 Odómetro Inicial", min_value=0)
+            
+            # AQUI ESTÁ LA MAGIA: value=def_lugar_salida
+            lugar_sal = st.text_input("📍 Lugar Salida", value=def_lugar_salida)
+            # AQUI ESTÁ LA MAGIA: value=def_odo_inicial
+            odo_ini = st.number_input("🔢 Odómetro Inicial", min_value=0, value=def_odo_inicial)
 
         with col2:
             st.write("")
@@ -129,6 +145,8 @@ elif menu == "🚗 Bitácora Oficial":
         if submitted:
             if not asunto:
                 st.error("⚠️ Falta el Asunto.")
+            elif odo_fin < odo_ini and odo_fin != 0:
+                 st.error(f"⚠️ Error: El odómetro final ({odo_fin}) no puede ser menor al inicial ({odo_ini}).")
             else:
                 nuevo_registro = {
                     "fecha": str(fecha),
@@ -146,7 +164,10 @@ elif menu == "🚗 Bitácora Oficial":
                 with st.spinner("Guardando..."):
                     if guardar_viaje(nuevo_registro):
                         st.success("✅ ¡Guardado en Google Sheets!")
-                        st.balloons()
+                        # Limpiamos los estados de hora para el siguiente viaje
+                        st.session_state.hora_salida = ""
+                        st.session_state.hora_llegada = ""
+                        st.rerun() # Recargamos para que se actualicen los datos "inteligentes"
 
 # 4. PÁGINA DE REPORTES
 elif menu == "📄 Reportes Cancillería":
@@ -165,4 +186,5 @@ elif menu == "📄 Reportes Cancillería":
 elif menu == "⚙️ Mantenimiento":
     st.title("Control de Mantenimiento")
     st.write("🚧 Próximamente: Alertas de cambio de aceite y llantas.")
+
 
