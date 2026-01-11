@@ -4,6 +4,7 @@ from datetime import datetime
 import pytz
 from streamlit_gsheets import GSheetsConnection
 import io
+from openpyxl import load_workbook # Librería para manipular el Excel oficial
 
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(page_title="Diplomatic Drive", page_icon="🚗", layout="wide")
@@ -14,10 +15,18 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 # --- FUNCIONES DE BASE DE DATOS ---
 def cargar_datos():
     try:
-        # Leemos la hoja principal de bitácora
         return conn.read(worksheet="Hoja 1", ttl=0)
     except:
         return pd.DataFrame()
+
+def cargar_configuracion():
+    # Intenta leer la hoja 'config' para llenar encabezados (Jefe Misión, Placa, etc.)
+    try:
+        df_config = conn.read(worksheet="config", ttl=0)
+        # Convertimos a un diccionario simple: {'variable': 'valor'}
+        return dict(zip(df_config.iloc[:, 0], df_config.iloc[:, 1]))
+    except:
+        return {}
 
 def guardar_viaje(datos):
     try:
@@ -37,10 +46,9 @@ def obtener_hora_actual():
 
 def obtener_timestamp_dc():
     zona_dc = pytz.timezone('America/New_York')
-    # Retorna la fecha y hora completa en DC para auditoría
     return str(datetime.now(zona_dc))
 
-# --- CALLBACKS (Solución para botones) ---
+# --- CALLBACKS ---
 def set_hora_salida():
     st.session_state.hora_salida = obtener_hora_actual()
 
@@ -52,7 +60,6 @@ def set_hora_llegada():
 # ==========================================
 
 with st.sidebar:
-    # Bandera oficial
     st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/f/f2/Flag_of_Costa_Rica.svg/320px-Flag_of_Costa_Rica.svg.png", width=100)
     st.title("Diplomatic Drive")
     st.subheader("Misión Permanente OEA")
@@ -64,7 +71,7 @@ with st.sidebar:
     )
     
     st.markdown("---")
-    st.caption("🟢 Sistema En Línea | V 1.3 Latino")
+    st.caption("🟢 Sistema En Línea | V 2.0 Oficial")
 
 # ==========================================
 # 🔽 LÓGICA DE PÁGINAS 🔽
@@ -74,7 +81,7 @@ with st.sidebar:
 if menu == "🏠 Inicio":
     st.title("Bienvenido, Luis")
     st.markdown("### 🛡️ Panel de Control Oficial")
-    st.info("Sistema listo para operar. Seleccione 'Bitácora Oficial' para registrar movimientos.")
+    st.info("Sistema listo. Seleccione 'Bitácora Oficial' para registrar movimientos.")
     
     df = cargar_datos()
     if not df.empty:
@@ -85,12 +92,12 @@ elif menu == "📅 Agenda":
     st.title("📅 Agenda de Movimientos")
     st.write("🚧 Módulo de Integración con Outlook (Fase 2)")
 
-# 3. BITÁCORA (Con Memoria, Formato Latino y Hora DC)
+# 3. BITÁCORA
 elif menu == "🚗 Bitácora Oficial":
     st.title("📒 Registro de Movimientos")
     st.markdown("*Formulario conectado a Base de Datos Segura*")
     
-    # --- MEMORIA INTELIGENTE ---
+    # Memoria Inteligente
     df = cargar_datos()
     def_lugar_salida = ""
     def_odo_inicial = 0
@@ -98,7 +105,6 @@ elif menu == "🚗 Bitácora Oficial":
     if not df.empty:
         ultimo_viaje = df.iloc[-1]
         def_lugar_salida = ultimo_viaje.get("lugar_llegada", "")
-        # Intentamos obtener el odómetro final anterior, si falla ponemos 0
         try:
             def_odo_inicial = int(ultimo_viaje.get("odo_final", 0))
         except:
@@ -111,7 +117,6 @@ elif menu == "🚗 Bitácora Oficial":
             fecha = st.date_input("Fecha del Viaje", datetime.now())
             st.write("---")
             
-            # Botón Salida
             col_b1, col_i1 = st.columns([1,2])
             with col_b1:
                 st.form_submit_button("🕒 Salida", on_click=set_hora_salida, type="secondary")
@@ -126,7 +131,6 @@ elif menu == "🚗 Bitácora Oficial":
             st.write("")
             st.write("---")
             
-            # Botón Llegada
             col_b2, col_i2 = st.columns([1,2])
             with col_b2:
                 st.form_submit_button("🏁 Llegada", on_click=set_hora_llegada, type="secondary")
@@ -144,14 +148,12 @@ elif menu == "🚗 Bitácora Oficial":
         submitted = st.form_submit_button("💾 GUARDAR EN NUBE", type="primary")
         
         if submitted:
-            # Validaciones
             if not asunto:
                 st.error("⚠️ Falta el Asunto.")
             elif odo_fin < odo_ini and odo_fin != 0:
                  st.error(f"⚠️ Error: El odómetro final no puede ser menor al inicial.")
             else:
-                # --- AQUÍ OCURRE LA MAGIA LATINA ---
-                # Usamos strftime("%d/%m/%Y") para guardar como 10/01/2026
+                # FORMATO LATINO + HORA DC
                 nuevo_registro = {
                     "fecha": fecha.strftime("%d/%m/%Y"), 
                     "hora_salida": str(hora_sal),
@@ -162,25 +164,23 @@ elif menu == "🚗 Bitácora Oficial":
                     "odo_final": int(odo_fin),
                     "costo": float(costo),
                     "asunto": asunto,
-                    "timestamp_registro": obtener_timestamp_dc() # Hora de DC
+                    "timestamp_registro": obtener_timestamp_dc()
                 }
                 
                 with st.spinner("Encriptando y guardando..."):
                     if guardar_viaje(nuevo_registro):
                         st.success("✅ ¡Viaje registrado exitosamente!")
                         st.balloons()
-                        # Recargamos para actualizar la memoria inteligente
                         st.rerun()
 
-# 4. REPORTES (Lectura Universal: Lee Formato Gringo y Latino)
+# 4. REPORTES (Integración con Plantilla Oficial)
 elif menu == "📄 Reportes Cancillería":
     st.title("🖨️ Centro de Reportes")
-    st.markdown("### Generación de Informes Oficiales")
-    st.info("🔒 Área segura: Los datos no se muestran en pantalla por privacidad.")
+    st.markdown("### Generación de Informe en Formato Oficial")
+    st.info("🔒 Los datos se inyectarán en la plantilla `plantilla_oficial.xlsx`")
     
     st.write("---")
     
-    # Filtros de Fecha
     col_f1, col_f2 = st.columns(2)
     with col_f1:
         inicio = st.date_input("Desde:", value=datetime.now().date().replace(day=1))
@@ -189,44 +189,64 @@ elif menu == "📄 Reportes Cancillería":
         
     st.write("")
     
-    # Botón de Generación
-    if st.button("📊 PROCESAR DATOS DEL PERIODO"):
+    if st.button("📊 GENERAR INFORME OFICIAL"):
         df = cargar_datos()
+        config = cargar_configuracion() # Cargamos datos de jefe misión, placa, etc.
         
         if not df.empty:
             try:
-                # --- CORRECCIÓN MAESTRA ---
-                # dayfirst=True: Prioriza formato Día/Mes/Año
-                # errors='coerce': Ignora celdas vacías o dañadas
+                # 1. Filtrado de Fechas
                 df["fecha_dt"] = pd.to_datetime(df["fecha"], dayfirst=True, errors='coerce').dt.date
-                
-                # Limpiamos filas sin fecha válida
                 df = df.dropna(subset=["fecha_dt"])
-
-                # Filtramos por las fechas seleccionadas
                 mask = (df["fecha_dt"] >= inicio) & (df["fecha_dt"] <= fin)
                 df_filtrado = df.loc[mask]
                 
                 if not df_filtrado.empty:
-                    # Ordenamos cronológicamente
                     df_filtrado = df_filtrado.sort_values(by="fecha_dt")
-
-                    # Preparamos el Excel
-                    buffer = io.BytesIO()
-                    columnas_oficiales = [
-                        "fecha", "hora_salida", "lugar_salida", "odo_inicial", 
-                        "hora_llegada", "lugar_llegada", "odo_final", "costo", "asunto"
-                    ]
                     
-                    with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-                        df_filtrado[columnas_oficiales].to_excel(writer, index=False, sheet_name='Bitacora_Oficial')
+                    # 2. Cargar la Plantilla Excel
+                    try:
+                        wb = load_workbook("plantilla_oficial.xlsx")
+                        ws = wb.active
+                    except FileNotFoundError:
+                        st.error("❌ No se encontró el archivo 'plantilla_oficial.xlsx' en GitHub. Por favor súbelo.")
+                        st.stop()
+
+                    # 3. Llenar Encabezados (Opcional - Si configuraste la hoja 'config')
+                    # Ajusta las celdas (ej: 'B3') según donde vaya cada dato en tu plantilla real
+                    if config:
+                        # Ejemplo: Si en tu excel la Misión va en B2 y el Jefe en B3
+                        # ws['B2'] = config.get('nombre_mision', '') 
+                        # ws['B3'] = config.get('jefe_mision', '')
+                        pass # Descomenta y ajusta arriba si quieres automatizar esto
+
+                    # 4. Inyectar los Viajes
+                    # AJUSTA ESTE NÚMERO: ¿En qué fila empiezan los datos vacíos en tu excel?
+                    FILA_INICIO = 12 
+                    
+                    for i, row in df_filtrado.iterrows():
+                        fila_excel = FILA_INICIO + i
                         
+                        # Mapeo de Columnas (A=1, B=2, C=3, etc.)
+                        # Ajusta estos números si tus columnas tienen otro orden
+                        ws.cell(row=fila_excel, column=1).value = row['fecha']          # Col A: Fecha
+                        ws.cell(row=fila_excel, column=2).value = row['hora_salida']    # Col B: Hora Salida
+                        ws.cell(row=fila_excel, column=3).value = row['lugar_salida']   # Col C: Lugar Salida
+                        ws.cell(row=fila_excel, column=4).value = row['odo_inicial']    # Col D: Odo Inicial
+                        ws.cell(row=fila_excel, column=5).value = row['hora_llegada']   # Col E: Hora Llegada
+                        ws.cell(row=fila_excel, column=6).value = row['lugar_llegada']  # Col F: Lugar Llegada
+                        ws.cell(row=fila_excel, column=7).value = row['odo_final']      # Col G: Odo Final
+                        ws.cell(row=fila_excel, column=8).value = row['asunto']         # Col H: Asunto
+                        # ws.cell(row=fila_excel, column=9).value = row['costo']        # Col I: Costo (Opcional)
+
+                    # 5. Guardar en memoria
+                    buffer = io.BytesIO()
+                    wb.save(buffer)
                     valioso_excel = buffer.getvalue()
                     
-                    st.success(f"✅ ¡Éxito! Se encontraron {len(df_filtrado)} viajes listos.")
+                    st.success(f"✅ Informe generado con {len(df_filtrado)} viajes.")
                     
-                    # Botón de Descarga
-                    nombre_archivo = f"Reporte_Oficial_{inicio}_{fin}.xlsx"
+                    nombre_archivo = f"Informe_Oficial_{inicio}_{fin}.xlsx"
                     st.download_button(
                         label="⬇️ DESCARGAR EXCEL OFICIAL",
                         data=valioso_excel,
@@ -235,14 +255,14 @@ elif menu == "📄 Reportes Cancillería":
                         type="primary"
                     )
                 else:
-                    st.warning(f"⚠️ No hay viajes registrados entre el {inicio} y el {fin}.")
+                    st.warning(f"⚠️ No hay viajes entre {inicio} y {fin}.")
             
             except Exception as e:
-                st.error(f"Error técnico procesando fechas: {e}")
+                st.error(f"Error técnico: {e}")
         else:
-            st.error("No hay conexión con la base de datos.")
+            st.error("Base de datos vacía.")
 
 # 5. MANTENIMIENTO
 elif menu == "⚙️ Mantenimiento":
     st.title("⚙️ Taller y Mantenimiento")
-    st.write("Próximamente: Control de Aceite y Llantas.")
+    st.write("Próximamente.")
