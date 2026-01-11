@@ -4,7 +4,7 @@ from datetime import datetime
 import pytz
 from streamlit_gsheets import GSheetsConnection
 import io
-from openpyxl import load_workbook # Librería para manipular el Excel oficial
+from openpyxl import load_workbook
 
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(page_title="Diplomatic Drive", page_icon="🚗", layout="wide")
@@ -20,10 +20,8 @@ def cargar_datos():
         return pd.DataFrame()
 
 def cargar_configuracion():
-    # Intenta leer la hoja 'config' para llenar encabezados (Jefe Misión, Placa, etc.)
     try:
         df_config = conn.read(worksheet="config", ttl=0)
-        # Convertimos a un diccionario simple: {'variable': 'valor'}
         return dict(zip(df_config.iloc[:, 0], df_config.iloc[:, 1]))
     except:
         return {}
@@ -71,7 +69,7 @@ with st.sidebar:
     )
     
     st.markdown("---")
-    st.caption("🟢 Sistema En Línea | V 2.0 Oficial")
+    st.caption("🟢 Sistema En Línea | V 2.1 Mapeo Corregido")
 
 # ==========================================
 # 🔽 LÓGICA DE PÁGINAS 🔽
@@ -153,7 +151,7 @@ elif menu == "🚗 Bitácora Oficial":
             elif odo_fin < odo_ini and odo_fin != 0:
                  st.error(f"⚠️ Error: El odómetro final no puede ser menor al inicial.")
             else:
-                # FORMATO LATINO + HORA DC
+                # FORMATO LATINO PARA GUARDADO
                 nuevo_registro = {
                     "fecha": fecha.strftime("%d/%m/%Y"), 
                     "hora_salida": str(hora_sal),
@@ -173,7 +171,7 @@ elif menu == "🚗 Bitácora Oficial":
                         st.balloons()
                         st.rerun()
 
-# 4. REPORTES (Integración con Plantilla Oficial)
+# 4. REPORTES (CORREGIDO: Mapeo exacto de columnas)
 elif menu == "📄 Reportes Cancillería":
     st.title("🖨️ Centro de Reportes")
     st.markdown("### Generación de Informe en Formato Oficial")
@@ -191,60 +189,84 @@ elif menu == "📄 Reportes Cancillería":
     
     if st.button("📊 GENERAR INFORME OFICIAL"):
         df = cargar_datos()
-        config = cargar_configuracion() # Cargamos datos de jefe misión, placa, etc.
+        config = cargar_configuracion()
         
         if not df.empty:
             try:
                 # 1. Filtrado de Fechas
+                # dayfirst=True ayuda a mezclar formatos viejos (05/01/2026) y nuevos
                 df["fecha_dt"] = pd.to_datetime(df["fecha"], dayfirst=True, errors='coerce').dt.date
                 df = df.dropna(subset=["fecha_dt"])
+                
                 mask = (df["fecha_dt"] >= inicio) & (df["fecha_dt"] <= fin)
                 df_filtrado = df.loc[mask]
                 
                 if not df_filtrado.empty:
+                    # Ordenamos por fecha para que salgan en orden
                     df_filtrado = df_filtrado.sort_values(by="fecha_dt")
                     
-                    # 2. Cargar la Plantilla Excel
+                    # 2. Cargar la Plantilla
                     try:
                         wb = load_workbook("plantilla_oficial.xlsx")
                         ws = wb.active
                     except FileNotFoundError:
-                        st.error("❌ No se encontró el archivo 'plantilla_oficial.xlsx' en GitHub. Por favor súbelo.")
+                        st.error("❌ No se encontró 'plantilla_oficial.xlsx'. Súbela a GitHub.")
                         st.stop()
 
-                    # 3. Llenar Encabezados (Opcional - Si configuraste la hoja 'config')
-                    # Ajusta las celdas (ej: 'B3') según donde vaya cada dato en tu plantilla real
-                    if config:
-                        # Ejemplo: Si en tu excel la Misión va en B2 y el Jefe en B3
-                        # ws['B2'] = config.get('nombre_mision', '') 
-                        # ws['B3'] = config.get('jefe_mision', '')
-                        pass # Descomenta y ajusta arriba si quieres automatizar esto
+                    # 3. Llenar Encabezados (Opcional - Si usas hoja config)
+                    # if config:
+                    #     ws['B3'] = config.get('jefe_mision', '') # Ejemplo
 
-                    # 4. Inyectar los Viajes
-                    # AJUSTA ESTE NÚMERO: ¿En qué fila empiezan los datos vacíos en tu excel?
-                    FILA_INICIO = 16 
+                    # 4. Inyectar los Viajes (MAPEO CORREGIDO SEGÚN TU FOTO)
+                    FILA_INICIO = 16  # <-- Ajustado según tu captura de pantalla
                     
                     for i, row in df_filtrado.iterrows():
                         fila_excel = FILA_INICIO + i
                         
-                        # Mapeo de Columnas (A=1, B=2, C=3, etc.)
-                        # Ajusta estos números si tus columnas tienen otro orden
-                        ws.cell(row=fila_excel, column=1).value = row['fecha']          # Col A: Fecha
-                        ws.cell(row=fila_excel, column=2).value = row['hora_salida']    # Col B: Hora Salida
-                        ws.cell(row=fila_excel, column=3).value = row['lugar_salida']   # Col C: Lugar Salida
-                        ws.cell(row=fila_excel, column=4).value = row['odo_inicial']    # Col D: Odo Inicial
-                        ws.cell(row=fila_excel, column=5).value = row['hora_llegada']   # Col E: Hora Llegada
-                        ws.cell(row=fila_excel, column=6).value = row['lugar_llegada']  # Col F: Lugar Llegada
-                        ws.cell(row=fila_excel, column=7).value = row['odo_final']      # Col G: Odo Final
-                        ws.cell(row=fila_excel, column=8).value = row['asunto']         # Col H: Asunto
-                        # ws.cell(row=fila_excel, column=9).value = row['costo']        # Col I: Costo (Opcional)
+                        # --- ASIGNACIÓN EXACTA DE COLUMNAS ---
+                        # Col A (1): Fecha
+                        ws.cell(row=fila_excel, column=1).value = row['fecha']
+                        
+                        # Col B (2): Odómetro Inicial (Antes pusimos hora aquí por error)
+                        ws.cell(row=fila_excel, column=2).value = row['odo_inicial']
+                        
+                        # Col C (3): Lugar Salida
+                        ws.cell(row=fila_excel, column=3).value = row['lugar_salida']
+                        
+                        # Col D (4): Hora Salida (Antes pusimos odómetro aquí)
+                        ws.cell(row=fila_excel, column=4).value = row['hora_salida']
+                        
+                        # Col E (5): Odómetro Final
+                        ws.cell(row=fila_excel, column=5).value = row['odo_final']
+                        
+                        # Col F (6): Lugar Llegada
+                        ws.cell(row=fila_excel, column=6).value = row['lugar_llegada']
+                        
+                        # Col G (7): Hora Llegada
+                        ws.cell(row=fila_excel, column=7).value = row['hora_llegada']
+                        
+                        # Col H (8): Km Recorridos (CÁLCULO AUTOMÁTICO)
+                        try:
+                            recorrido = int(row['odo_final']) - int(row['odo_inicial'])
+                            ws.cell(row=fila_excel, column=8).value = recorrido
+                        except:
+                            ws.cell(row=fila_excel, column=8).value = 0
+                            
+                        # Col I (9): Costo Moneda Local (Opcional)
+                        # ws.cell(row=fila_excel, column=9).value = "" 
+                        
+                        # Col J (10): Costo US$
+                        ws.cell(row=fila_excel, column=10).value = row['costo']
+                        
+                        # Col M (13): Motivo/Justificación (La columna ancha del final)
+                        ws.cell(row=fila_excel, column=13).value = row['asunto']
 
-                    # 5. Guardar en memoria
+                    # 5. Guardar y Descargar
                     buffer = io.BytesIO()
                     wb.save(buffer)
                     valioso_excel = buffer.getvalue()
                     
-                    st.success(f"✅ Informe generado con {len(df_filtrado)} viajes.")
+                    st.success(f"✅ Informe generado con {len(df_filtrado)} registros.")
                     
                     nombre_archivo = f"Informe_Oficial_{inicio}_{fin}.xlsx"
                     st.download_button(
@@ -255,7 +277,7 @@ elif menu == "📄 Reportes Cancillería":
                         type="primary"
                     )
                 else:
-                    st.warning(f"⚠️ No hay viajes entre {inicio} y {fin}.")
+                    st.warning(f"⚠️ No se encontraron viajes entre {inicio} y {fin}. Verifica las fechas.")
             
             except Exception as e:
                 st.error(f"Error técnico: {e}")
@@ -266,4 +288,3 @@ elif menu == "📄 Reportes Cancillería":
 elif menu == "⚙️ Mantenimiento":
     st.title("⚙️ Taller y Mantenimiento")
     st.write("Próximamente.")
-
