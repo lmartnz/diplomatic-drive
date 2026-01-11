@@ -3,6 +3,7 @@ import pandas as pd
 from datetime import datetime
 import pytz
 from streamlit_gsheets import GSheetsConnection
+import io
 
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(page_title="Diplomatic Drive", page_icon="🚗", layout="wide")
@@ -10,9 +11,10 @@ st.set_page_config(page_title="Diplomatic Drive", page_icon="🚗", layout="wide
 # --- CONEXIÓN A GOOGLE SHEETS ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# --- FUNCIONES DE BASE DE DATOS (Globales) ---
+# --- FUNCIONES DE BASE DE DATOS ---
 def cargar_datos():
     try:
+        # Leemos la hoja principal de bitácora
         return conn.read(worksheet="Hoja 1", ttl=0)
     except:
         return pd.DataFrame()
@@ -28,12 +30,16 @@ def guardar_viaje(datos):
         st.error(f"Error guardando en la nube: {e}")
         return False
 
-# --- FUNCIÓN DE HORA ---
+# --- FUNCIÓN DE HORA (Washington DC) ---
 def obtener_hora_actual():
     zona_dc = pytz.timezone('America/New_York')
     return datetime.now(zona_dc).strftime("%H:%M")
 
-# --- CALLBACKS PARA BOTONES ---
+def obtener_timestamp_dc():
+    zona_dc = pytz.timezone('America/New_York')
+    return str(datetime.now(zona_dc))
+
+# --- CALLBACKS (Solución para botones) ---
 def set_hora_salida():
     st.session_state.hora_salida = obtener_hora_actual()
 
@@ -41,65 +47,53 @@ def set_hora_llegada():
     st.session_state.hora_llegada = obtener_hora_actual()
 
 # ==========================================
-# 🔽 AQUÍ EMPIEZA TU MENÚ LATERAL 🔽
+# 🔽 MENÚ LATERAL 🔽
 # ==========================================
 
 with st.sidebar:
+    # Bandera oficial
     st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/f/f2/Flag_of_Costa_Rica.svg/320px-Flag_of_Costa_Rica.svg.png", width=100)
     st.title("Diplomatic Drive")
     st.subheader("Misión Permanente OEA")
     
-    # El Menú de Navegación
     menu = st.radio(
-        "Navegación",
+        "Menú Principal",
         ["🏠 Inicio", "📅 Agenda", "🚗 Bitácora Oficial", "📄 Reportes Cancillería", "⚙️ Mantenimiento"],
         index=0
     )
     
     st.markdown("---")
-    st.info("🟢 Sistema: En Línea")
-    st.caption("Conexión Segura: Google Cloud")
+    st.caption("🟢 Sistema En Línea | V 1.2")
 
 # ==========================================
-# 🔽 LOGICA DE CADA PAGINA 🔽
+# 🔽 LÓGICA DE PÁGINAS 🔽
 # ==========================================
 
-# 1. PÁGINA DE INICIO
+# 1. INICIO
 if menu == "🏠 Inicio":
     st.title("Bienvenido, Luis")
-    st.markdown("### Panel de Control - Misión Diplomática")
-    
-    # Mostrar un resumen rápido si hay datos
-    df = cargar_datos()
-    if not df.empty:
-        total_viajes = len(df)
-        st.metric("Total Viajes Registrados", total_viajes)
-    else:
-        st.info("No hay viajes registrados aún en la nueva base de datos.")
+    st.markdown("### 🛡️ Panel de Control Oficial")
+    st.info("Sistema listo para operar. Seleccione 'Bitácora Oficial' para registrar movimientos.")
 
-# 2. PÁGINA DE AGENDA (Placeholder)
+# 2. AGENDA
 elif menu == "📅 Agenda":
-    st.title("Agenda de la Embajadora")
-    st.write("🚧 Integración con Outlook en construcción (Fase 2)...")
+    st.title("📅 Agenda de Movimientos")
+    st.write("🚧 Módulo de Integración con Outlook (Fase 2)")
 
-# 3. PÁGINA DE BITÁCORA (CON MEMORIA INTELIGENTE 🧠)
+# 3. BITÁCORA (Con Memoria y Sin Error Rojo)
 elif menu == "🚗 Bitácora Oficial":
-    st.title("📒 Registro de Movimientos Oficiales")
-    st.markdown("*Formulario conectado a Google Sheets*")
+    st.title("📒 Registro de Movimientos")
+    st.markdown("*Formulario conectado a Base de Datos Segura*")
     
-    # --- LOGICA DE MEMORIA INTELIGENTE ---
-    # 1. Leemos los datos ANTES de pintar el formulario
+    # --- MEMORIA INTELIGENTE ---
     df = cargar_datos()
-    
-    # 2. Definimos valores por defecto (si es el primer viaje de la historia, son ceros)
     def_lugar_salida = ""
     def_odo_inicial = 0
     
-    # 3. Si hay datos previos, tomamos el ÚLTIMO viaje registrado
     if not df.empty:
-        ultimo_viaje = df.iloc[-1] # La última fila
-        def_lugar_salida = ultimo_viaje["lugar_llegada"] # El destino anterior es el inicio actual
-        def_odo_inicial = int(ultimo_viaje["odo_final"]) # El odómetro final anterior es el inicial actual
+        ultimo_viaje = df.iloc[-1]
+        def_lugar_salida = ultimo_viaje.get("lugar_llegada", "")
+        def_odo_inicial = int(ultimo_viaje.get("odo_final", 0))
     
     with st.form("entry_form", clear_on_submit=False):
         col1, col2 = st.columns(2)
@@ -116,9 +110,7 @@ elif menu == "🚗 Bitácora Oficial":
                 if 'hora_salida' not in st.session_state: st.session_state.hora_salida = ""
                 hora_sal = st.text_input("Hora Salida", key='hora_salida')
             
-            # AQUI ESTÁ LA MAGIA: value=def_lugar_salida
             lugar_sal = st.text_input("📍 Lugar Salida", value=def_lugar_salida)
-            # AQUI ESTÁ LA MAGIA: value=def_odo_inicial
             odo_ini = st.number_input("🔢 Odómetro Inicial", min_value=0, value=def_odo_inicial)
 
         with col2:
@@ -137,17 +129,19 @@ elif menu == "🚗 Bitácora Oficial":
             odo_fin = st.number_input("🔢 Odómetro Final", min_value=0)
 
         st.write("---")
-        asunto = st.text_area("📝 Asunto / Misión")
+        asunto = st.text_area("📝 Asunto / Misión (Detalle para reporte)")
         costo = st.number_input("💵 Gastos ($)", min_value=0.0, format="%.2f")
 
         submitted = st.form_submit_button("💾 GUARDAR EN NUBE", type="primary")
         
         if submitted:
+            # Validaciones
             if not asunto:
                 st.error("⚠️ Falta el Asunto.")
             elif odo_fin < odo_ini and odo_fin != 0:
-                 st.error(f"⚠️ Error: El odómetro final ({odo_fin}) no puede ser menor al inicial ({odo_ini}).")
+                 st.error(f"⚠️ Error: El odómetro final no puede ser menor al inicial.")
             else:
+                # Datos con Timestamp corregido (DC)
                 nuevo_registro = {
                     "fecha": str(fecha),
                     "hora_salida": str(hora_sal),
@@ -158,33 +152,77 @@ elif menu == "🚗 Bitácora Oficial":
                     "odo_final": int(odo_fin),
                     "costo": float(costo),
                     "asunto": asunto,
-                    "timestamp_registro": str(datetime.now())
+                    "timestamp_registro": obtener_timestamp_dc() # <--- CORREGIDO AQUI
                 }
                 
-                with st.spinner("Guardando..."):
+                with st.spinner("Encriptando y guardando..."):
                     if guardar_viaje(nuevo_registro):
-                        st.success("✅ ¡Guardado en Google Sheets!")
-                        # Limpiamos los estados de hora para el siguiente viaje
-                        st.session_state.hora_salida = ""
-                        st.session_state.hora_llegada = ""
-                        st.rerun() # Recargamos para que se actualicen los datos "inteligentes"
+                        st.success("✅ ¡Viaje registrado exitosamente!")
+                        st.balloons()
+                        # NOTA: Quitamos las líneas que borraban el estado para evitar el error rojo.
+                        # Al hacer rerun, se actualiza la memoria inteligente.
+                        st.rerun()
 
-# 4. PÁGINA DE REPORTES
+# 4. REPORTES (Privado y con Excel)
 elif menu == "📄 Reportes Cancillería":
-    st.title("Generador de Reportes")
-    st.write("Aquí podrás descargar el Excel semanal.")
+    st.title("🖨️ Centro de Reportes")
+    st.markdown("### Generación de Informes Oficiales")
+    st.info("🔒 Área segura: Los datos no se muestran en pantalla por privacidad.")
     
-    # Botón para descargar lo que hay en Google Sheets
-    df = cargar_datos()
-    if not df.empty:
-        st.dataframe(df)
-        # Convertir a CSV para descarga simple
-        csv = df.to_csv(index=False).encode('utf-8')
-        st.download_button("⬇️ Descargar Copia de Seguridad", csv, "bitacora_backup.csv", "text/csv")
+    st.write("---")
+    
+    # Filtros de Fecha
+    col_f1, col_f2 = st.columns(2)
+    with col_f1:
+        inicio = st.date_input("Desde:", value=datetime.now().date().replace(day=1))
+    with col_f2:
+        fin = st.date_input("Hasta:", value=datetime.now().date())
+        
+    st.write("")
+    
+    # Botón de Generación
+    if st.button("📊 PROCESAR DATOS DEL PERIODO"):
+        df = cargar_datos()
+        
+        if not df.empty:
+            # Convertir fecha para filtrar
+            df["fecha_dt"] = pd.to_datetime(df["fecha"]).dt.date
+            mask = (df["fecha_dt"] >= inicio) & (df["fecha_dt"] <= fin)
+            df_filtrado = df.loc[mask]
+            
+            if not df_filtrado.empty:
+                # Preparamos el Excel en memoria
+                buffer = io.BytesIO()
+                
+                # Seleccionamos solo columnas oficiales (sin timestamp)
+                columnas_oficiales = [
+                    "fecha", "hora_salida", "lugar_salida", "odo_inicial", 
+                    "hora_llegada", "lugar_llegada", "odo_final", "costo", "asunto"
+                ]
+                
+                # Creamos el Excel usando Pandas (motor openpyxl)
+                with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+                    df_filtrado[columnas_oficiales].to_excel(writer, index=False, sheet_name='Bitacora_Oficial')
+                    
+                valioso_excel = buffer.getvalue()
+                
+                st.success(f"✅ Se encontraron {len(df_filtrado)} registros listos.")
+                
+                # Botón de Descarga
+                nombre_archivo = f"Reporte_Oficial_{inicio}_{fin}.xlsx"
+                st.download_button(
+                    label="⬇️ DESCARGAR EXCEL OFICIAL",
+                    data=valioso_excel,
+                    file_name=nombre_archivo,
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    type="primary"
+                )
+            else:
+                st.warning("⚠️ No hay viajes registrados en esas fechas.")
+        else:
+            st.error("No hay conexión con la base de datos.")
 
-# 5. PÁGINA DE MANTENIMIENTO
+# 5. MANTENIMIENTO
 elif menu == "⚙️ Mantenimiento":
-    st.title("Control de Mantenimiento")
-    st.write("🚧 Próximamente: Alertas de cambio de aceite y llantas.")
-
-
+    st.title("⚙️ Taller y Mantenimiento")
+    st.write("Próximamente: Control de Aceite y Llantas.")
