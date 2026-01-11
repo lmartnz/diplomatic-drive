@@ -69,7 +69,7 @@ with st.sidebar:
     )
     
     st.markdown("---")
-    st.caption("🟢 Sistema En Línea | V 2.1 Mapeo Corregido")
+    st.caption("🟢 Sistema En Línea | V 2.2 Fix Celdas")
 
 # ==========================================
 # 🔽 LÓGICA DE PÁGINAS 🔽
@@ -151,7 +151,6 @@ elif menu == "🚗 Bitácora Oficial":
             elif odo_fin < odo_ini and odo_fin != 0:
                  st.error(f"⚠️ Error: El odómetro final no puede ser menor al inicial.")
             else:
-                # FORMATO LATINO PARA GUARDADO
                 nuevo_registro = {
                     "fecha": fecha.strftime("%d/%m/%Y"), 
                     "hora_salida": str(hora_sal),
@@ -171,7 +170,7 @@ elif menu == "🚗 Bitácora Oficial":
                         st.balloons()
                         st.rerun()
 
-# 4. REPORTES (CORREGIDO: Mapeo exacto de columnas)
+# 4. REPORTES (CORREGIDO: Columna K para celdas combinadas)
 elif menu == "📄 Reportes Cancillería":
     st.title("🖨️ Centro de Reportes")
     st.markdown("### Generación de Informe en Formato Oficial")
@@ -189,12 +188,10 @@ elif menu == "📄 Reportes Cancillería":
     
     if st.button("📊 GENERAR INFORME OFICIAL"):
         df = cargar_datos()
-        config = cargar_configuracion()
         
         if not df.empty:
             try:
                 # 1. Filtrado de Fechas
-                # dayfirst=True ayuda a mezclar formatos viejos (05/01/2026) y nuevos
                 df["fecha_dt"] = pd.to_datetime(df["fecha"], dayfirst=True, errors='coerce').dt.date
                 df = df.dropna(subset=["fecha_dt"])
                 
@@ -202,10 +199,10 @@ elif menu == "📄 Reportes Cancillería":
                 df_filtrado = df.loc[mask]
                 
                 if not df_filtrado.empty:
-                    # Ordenamos por fecha para que salgan en orden
+                    # Ordenar por fecha
                     df_filtrado = df_filtrado.sort_values(by="fecha_dt")
                     
-                    # 2. Cargar la Plantilla
+                    # 2. Cargar Plantilla
                     try:
                         wb = load_workbook("plantilla_oficial.xlsx")
                         ws = wb.active
@@ -213,55 +210,37 @@ elif menu == "📄 Reportes Cancillería":
                         st.error("❌ No se encontró 'plantilla_oficial.xlsx'. Súbela a GitHub.")
                         st.stop()
 
-                    # 3. Llenar Encabezados (Opcional - Si usas hoja config)
-                    # if config:
-                    #     ws['B3'] = config.get('jefe_mision', '') # Ejemplo
-
-                    # 4. Inyectar los Viajes (MAPEO CORREGIDO SEGÚN TU FOTO)
-                    FILA_INICIO = 16  # <-- Ajustado según tu captura de pantalla
+                    # 3. Inyectar Viajes
+                    FILA_INICIO = 16
                     
                     for i, row in df_filtrado.iterrows():
                         fila_excel = FILA_INICIO + i
                         
-                        # --- ASIGNACIÓN EXACTA DE COLUMNAS ---
-                        # Col A (1): Fecha
+                        # A=1, B=2, C=3, D=4, E=5, F=6, G=7, H=8, I=9, J=10, K=11
+                        
                         ws.cell(row=fila_excel, column=1).value = row['fecha']
-                        
-                        # Col B (2): Odómetro Inicial (Antes pusimos hora aquí por error)
                         ws.cell(row=fila_excel, column=2).value = row['odo_inicial']
-                        
-                        # Col C (3): Lugar Salida
                         ws.cell(row=fila_excel, column=3).value = row['lugar_salida']
-                        
-                        # Col D (4): Hora Salida (Antes pusimos odómetro aquí)
                         ws.cell(row=fila_excel, column=4).value = row['hora_salida']
-                        
-                        # Col E (5): Odómetro Final
                         ws.cell(row=fila_excel, column=5).value = row['odo_final']
-                        
-                        # Col F (6): Lugar Llegada
                         ws.cell(row=fila_excel, column=6).value = row['lugar_llegada']
-                        
-                        # Col G (7): Hora Llegada
                         ws.cell(row=fila_excel, column=7).value = row['hora_llegada']
                         
-                        # Col H (8): Km Recorridos (CÁLCULO AUTOMÁTICO)
+                        # Cálculo Km Recorridos
                         try:
                             recorrido = int(row['odo_final']) - int(row['odo_inicial'])
                             ws.cell(row=fila_excel, column=8).value = recorrido
                         except:
                             ws.cell(row=fila_excel, column=8).value = 0
                             
-                        # Col I (9): Costo Moneda Local (Opcional)
-                        # ws.cell(row=fila_excel, column=9).value = "" 
-                        
-                        # Col J (10): Costo US$
+                        # Costos
                         ws.cell(row=fila_excel, column=10).value = row['costo']
                         
-                        # Col M (13): Motivo/Justificación (La columna ancha del final)
-                        ws.cell(row=fila_excel, column=13).value = row['asunto']
+                        # --- CORRECCIÓN AQUÍ ---
+                        # Escribimos en la Columna 11 (K) que es la "Jefa" de la combinación K-L-M
+                        ws.cell(row=fila_excel, column=11).value = row['asunto']
 
-                    # 5. Guardar y Descargar
+                    # 4. Guardar y Descargar
                     buffer = io.BytesIO()
                     wb.save(buffer)
                     valioso_excel = buffer.getvalue()
@@ -277,7 +256,7 @@ elif menu == "📄 Reportes Cancillería":
                         type="primary"
                     )
                 else:
-                    st.warning(f"⚠️ No se encontraron viajes entre {inicio} y {fin}. Verifica las fechas.")
+                    st.warning(f"⚠️ No hay viajes en el periodo seleccionado.")
             
             except Exception as e:
                 st.error(f"Error técnico: {e}")
