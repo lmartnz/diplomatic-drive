@@ -222,7 +222,7 @@ elif menu == "📄 Reportes Cancillería":
 
                     # 4. Inyectar los Viajes
                     # AJUSTA ESTE NÚMERO: ¿En qué fila empiezan los datos vacíos en tu excel?
-                    FILA_INICIO = 12 
+                    FILA_INICIO = 16 
                     
                     for i, row in df_filtrado.iterrows():
                         fila_excel = FILA_INICIO + i
@@ -266,3 +266,4 @@ elif menu == "📄 Reportes Cancillería":
 elif menu == "⚙️ Mantenimiento":
     st.title("⚙️ Taller y Mantenimiento")
     st.write("Próximamente.")
+
