@@ -30,13 +30,14 @@ def guardar_viaje(datos):
         st.error(f"Error guardando en la nube: {e}")
         return False
 
-# --- FUNCIÓN DE HORA (Washington DC) ---
+# --- FUNCIONES DE TIEMPO (Washington DC) ---
 def obtener_hora_actual():
     zona_dc = pytz.timezone('America/New_York')
     return datetime.now(zona_dc).strftime("%H:%M")
 
 def obtener_timestamp_dc():
     zona_dc = pytz.timezone('America/New_York')
+    # Retorna la fecha y hora completa en DC para auditoría
     return str(datetime.now(zona_dc))
 
 # --- CALLBACKS (Solución para botones) ---
@@ -63,7 +64,7 @@ with st.sidebar:
     )
     
     st.markdown("---")
-    st.caption("🟢 Sistema En Línea | V 1.2")
+    st.caption("🟢 Sistema En Línea | V 1.3 Latino")
 
 # ==========================================
 # 🔽 LÓGICA DE PÁGINAS 🔽
@@ -74,13 +75,17 @@ if menu == "🏠 Inicio":
     st.title("Bienvenido, Luis")
     st.markdown("### 🛡️ Panel de Control Oficial")
     st.info("Sistema listo para operar. Seleccione 'Bitácora Oficial' para registrar movimientos.")
+    
+    df = cargar_datos()
+    if not df.empty:
+        st.metric("Total Viajes Registrados", len(df))
 
 # 2. AGENDA
 elif menu == "📅 Agenda":
     st.title("📅 Agenda de Movimientos")
     st.write("🚧 Módulo de Integración con Outlook (Fase 2)")
 
-# 3. BITÁCORA (Con Memoria y Sin Error Rojo)
+# 3. BITÁCORA (Con Memoria, Formato Latino y Hora DC)
 elif menu == "🚗 Bitácora Oficial":
     st.title("📒 Registro de Movimientos")
     st.markdown("*Formulario conectado a Base de Datos Segura*")
@@ -93,7 +98,11 @@ elif menu == "🚗 Bitácora Oficial":
     if not df.empty:
         ultimo_viaje = df.iloc[-1]
         def_lugar_salida = ultimo_viaje.get("lugar_llegada", "")
-        def_odo_inicial = int(ultimo_viaje.get("odo_final", 0))
+        # Intentamos obtener el odómetro final anterior, si falla ponemos 0
+        try:
+            def_odo_inicial = int(ultimo_viaje.get("odo_final", 0))
+        except:
+            def_odo_inicial = 0
     
     with st.form("entry_form", clear_on_submit=False):
         col1, col2 = st.columns(2)
@@ -141,9 +150,10 @@ elif menu == "🚗 Bitácora Oficial":
             elif odo_fin < odo_ini and odo_fin != 0:
                  st.error(f"⚠️ Error: El odómetro final no puede ser menor al inicial.")
             else:
-                # Datos con Timestamp corregido (DC)
+                # --- AQUÍ OCURRE LA MAGIA LATINA ---
+                # Usamos strftime("%d/%m/%Y") para guardar como 10/01/2026
                 nuevo_registro = {
-                    "fecha": str(fecha),
+                    "fecha": fecha.strftime("%d/%m/%Y"), 
                     "hora_salida": str(hora_sal),
                     "lugar_salida": lugar_sal,
                     "odo_inicial": int(odo_ini),
@@ -152,40 +162,87 @@ elif menu == "🚗 Bitácora Oficial":
                     "odo_final": int(odo_fin),
                     "costo": float(costo),
                     "asunto": asunto,
-                    "timestamp_registro": obtener_timestamp_dc() # <--- CORREGIDO AQUI
+                    "timestamp_registro": obtener_timestamp_dc() # Hora de DC
                 }
                 
                 with st.spinner("Encriptando y guardando..."):
                     if guardar_viaje(nuevo_registro):
                         st.success("✅ ¡Viaje registrado exitosamente!")
                         st.balloons()
-                        # NOTA: Quitamos las líneas que borraban el estado para evitar el error rojo.
-                        # Al hacer rerun, se actualiza la memoria inteligente.
+                        # Recargamos para actualizar la memoria inteligente
                         st.rerun()
 
-# 4. REPORTES (MODO DIAGNÓSTICO 🧐)
+# 4. REPORTES (Lectura Universal: Lee Formato Gringo y Latino)
 elif menu == "📄 Reportes Cancillería":
-    st.title("🕵️‍♂️ Diagnóstico de Datos")
+    st.title("🖨️ Centro de Reportes")
+    st.markdown("### Generación de Informes Oficiales")
+    st.info("🔒 Área segura: Los datos no se muestran en pantalla por privacidad.")
     
-    if st.button("🔄 Ver Datos Crudos (Sin Filtros)"):
-        # 1. Cargamos todo sin miedo
+    st.write("---")
+    
+    # Filtros de Fecha
+    col_f1, col_f2 = st.columns(2)
+    with col_f1:
+        inicio = st.date_input("Desde:", value=datetime.now().date().replace(day=1))
+    with col_f2:
+        fin = st.date_input("Hasta:", value=datetime.now().date())
+        
+    st.write("")
+    
+    # Botón de Generación
+    if st.button("📊 PROCESAR DATOS DEL PERIODO"):
         df = cargar_datos()
         
         if not df.empty:
-            st.write("### 1. Así ve Python tus datos:")
-            st.dataframe(df)
+            try:
+                # --- CORRECCIÓN MAESTRA ---
+                # dayfirst=True: Prioriza formato Día/Mes/Año
+                # errors='coerce': Ignora celdas vacías o dañadas
+                df["fecha_dt"] = pd.to_datetime(df["fecha"], dayfirst=True, errors='coerce').dt.date
+                
+                # Limpiamos filas sin fecha válida
+                df = df.dropna(subset=["fecha_dt"])
+
+                # Filtramos por las fechas seleccionadas
+                mask = (df["fecha_dt"] >= inicio) & (df["fecha_dt"] <= fin)
+                df_filtrado = df.loc[mask]
+                
+                if not df_filtrado.empty:
+                    # Ordenamos cronológicamente
+                    df_filtrado = df_filtrado.sort_values(by="fecha_dt")
+
+                    # Preparamos el Excel
+                    buffer = io.BytesIO()
+                    columnas_oficiales = [
+                        "fecha", "hora_salida", "lugar_salida", "odo_inicial", 
+                        "hora_llegada", "lugar_llegada", "odo_final", "costo", "asunto"
+                    ]
+                    
+                    with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+                        df_filtrado[columnas_oficiales].to_excel(writer, index=False, sheet_name='Bitacora_Oficial')
+                        
+                    valioso_excel = buffer.getvalue()
+                    
+                    st.success(f"✅ ¡Éxito! Se encontraron {len(df_filtrado)} viajes listos.")
+                    
+                    # Botón de Descarga
+                    nombre_archivo = f"Reporte_Oficial_{inicio}_{fin}.xlsx"
+                    st.download_button(
+                        label="⬇️ DESCARGAR EXCEL OFICIAL",
+                        data=valioso_excel,
+                        file_name=nombre_archivo,
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        type="primary"
+                    )
+                else:
+                    st.warning(f"⚠️ No hay viajes registrados entre el {inicio} y el {fin}.")
             
-            st.write("### 2. Revisión de Fechas:")
-            # Intentamos ver qué tipo de datos son
-            st.write(df["fecha"].head(10)) 
-            
-            st.success(f"Hay {len(df)} filas en total en la base de datos.")
+            except Exception as e:
+                st.error(f"Error técnico procesando fechas: {e}")
         else:
-            st.error("La base de datos parece vacía o no conecta.")
+            st.error("No hay conexión con la base de datos.")
 
 # 5. MANTENIMIENTO
 elif menu == "⚙️ Mantenimiento":
     st.title("⚙️ Taller y Mantenimiento")
     st.write("Próximamente: Control de Aceite y Llantas.")
-
-
