@@ -163,76 +163,29 @@ elif menu == "🚗 Bitácora Oficial":
                         # Al hacer rerun, se actualiza la memoria inteligente.
                         st.rerun()
 
-# 4. REPORTES (Privado, con Excel y Corrección de Errores)
+# 4. REPORTES (MODO DIAGNÓSTICO 🧐)
 elif menu == "📄 Reportes Cancillería":
-    st.title("🖨️ Centro de Reportes")
-    st.markdown("### Generación de Informes Oficiales")
-    st.info("🔒 Área segura: Los datos no se muestran en pantalla por privacidad.")
+    st.title("🕵️‍♂️ Diagnóstico de Datos")
     
-    st.write("---")
-    
-    # Filtros de Fecha
-    col_f1, col_f2 = st.columns(2)
-    with col_f1:
-        inicio = st.date_input("Desde:", value=datetime.now().date().replace(day=1))
-    with col_f2:
-        fin = st.date_input("Hasta:", value=datetime.now().date())
-        
-    st.write("")
-    
-    # Botón de Generación
-    if st.button("📊 PROCESAR DATOS DEL PERIODO"):
+    if st.button("🔄 Ver Datos Crudos (Sin Filtros)"):
+        # 1. Cargamos todo sin miedo
         df = cargar_datos()
         
         if not df.empty:
-            try:
-                # 1. Limpieza Inteligente de Fechas
-                # errors='coerce' transforma datos basura en NaT (Not a Time) para que no falle
-                df["fecha_dt"] = pd.to_datetime(df["fecha"], errors='coerce').dt.date
-                
-                # 2. Filtramos quitando las filas vacías o con error
-                df = df.dropna(subset=["fecha_dt"])
-
-                # 3. Aplicamos el filtro de fechas seleccionado
-                mask = (df["fecha_dt"] >= inicio) & (df["fecha_dt"] <= fin)
-                df_filtrado = df.loc[mask]
-                
-                if not df_filtrado.empty:
-                    # Preparamos el Excel en memoria
-                    buffer = io.BytesIO()
-                    
-                    # Seleccionamos solo columnas oficiales
-                    columnas_oficiales = [
-                        "fecha", "hora_salida", "lugar_salida", "odo_inicial", 
-                        "hora_llegada", "lugar_llegada", "odo_final", "costo", "asunto"
-                    ]
-                    
-                    with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-                        df_filtrado[columnas_oficiales].to_excel(writer, index=False, sheet_name='Bitacora_Oficial')
-                        
-                    valioso_excel = buffer.getvalue()
-                    
-                    st.success(f"✅ Se encontraron {len(df_filtrado)} registros listos.")
-                    
-                    # Botón de Descarga
-                    nombre_archivo = f"Reporte_Oficial_{inicio}_{fin}.xlsx"
-                    st.download_button(
-                        label="⬇️ DESCARGAR EXCEL OFICIAL",
-                        data=valioso_excel,
-                        file_name=nombre_archivo,
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        type="primary"
-                    )
-                else:
-                    st.warning("⚠️ No hay viajes registrados en esas fechas.")
+            st.write("### 1. Así ve Python tus datos:")
+            st.dataframe(df)
             
-            except Exception as e:
-                st.error(f"Error procesando los datos: {e}")
+            st.write("### 2. Revisión de Fechas:")
+            # Intentamos ver qué tipo de datos son
+            st.write(df["fecha"].head(10)) 
+            
+            st.success(f"Hay {len(df)} filas en total en la base de datos.")
         else:
-            st.error("No hay conexión con la base de datos o está vacía.")
+            st.error("La base de datos parece vacía o no conecta.")
 
 # 5. MANTENIMIENTO
 elif menu == "⚙️ Mantenimiento":
     st.title("⚙️ Taller y Mantenimiento")
     st.write("Próximamente: Control de Aceite y Llantas.")
+
 
